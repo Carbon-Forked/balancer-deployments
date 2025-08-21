@@ -1,13 +1,14 @@
-# Sample Hardhat Project
+# Balancer V3 Deployments
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.
+This project demonstrates how to deploy Balancer V3 contracts to Hedera testnet.
 
-Try running some of the following tasks:
+## Setup and deploy
 
-```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat ignition deploy ./ignition/modules/Lock.ts
-```
+1. Clone `.env.example` to `.env`, then fill your deploy private key
+
+
+2. Run commands
+    ```shell
+    npm install
+    npm run deploy
+    ```
