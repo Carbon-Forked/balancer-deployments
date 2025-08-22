@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "fs";
-import { ethers } from "hardhat";
+import { ethers, network } from "hardhat";
+import { Interface } from "ethers";
 
 // Constants
 export const SECOND = 1;
@@ -56,6 +57,7 @@ const config = {
         gyro2CLPPoolFactory: "./artifacts-import/pool-gyro/Gyro2CLPPoolFactory.json",
         gyroECLPPoolFactory: "./artifacts-import/pool-gyro/GyroECLPPoolFactory.json",
         reClammPoolFactory: "./artifacts-import/pool-reclamm/ReClammPoolFactory.json",
+        authorizer: "./artifacts-import/authorizer/authorizer.json",
     },
     jsonMetadata: {
         stablePoolFactory: { name: 'StablePoolFactory', version: 2, deployment: '20250821-v3-stable-pool-v2' },
@@ -114,6 +116,20 @@ async function deployContract(
 
     console.log(`${name} deployed to: ${address} (tx: ${txHash})`);
     return { contract, address };
+}
+
+async function attachContract(
+    address: string,
+    name: string,
+    abi: any,
+    bytecode: string,
+    deployer: any
+) {
+    const factory = new ethers.ContractFactory(abi, bytecode, deployer);
+    console.log(`Attaching ${name}`);
+
+    const contract = factory.attach(address);
+    return { contract };
 }
 
 async function main() {
@@ -292,7 +308,7 @@ async function main() {
 
     // Step 14: Deploy BalancerContractRegistry
     const balancerContractRegistryArtifact = loadArtifact(config.artifactPaths.balancerContractRegistry);
-    const { address: balancerContractRegistryAddress } = await deployContract(
+    const { address: balancerContractRegistryAddress, contract: balancerContractRegistry } = await deployContract(
         "BalancerContractRegistry",
         balancerContractRegistryArtifact.abi,
         balancerContractRegistryArtifact.bytecode,
@@ -551,35 +567,50 @@ async function main() {
         deployer
     );
 
-    // // Step 22: Deploy LBPMigrationRouter
-    // const lBPMigrationRouterArtifact = loadArtifact(config.artifactPaths.lBPMigrationRouter);
-    // const { address: lBPMigrationRouterAddress } = await deployContract(
-    //     "LBPMigrationRouter",
-    //     lBPMigrationRouterArtifact.abi,
-    //     lBPMigrationRouterArtifact.bytecode,
-    //     [
-    //         balancerContractRegistryAddress,
-    //         JSON.stringify(config.jsonMetadata.lBPMigrationRouter)
-    //     ],
-    //     deployer
-    // );
+    const iface = new Interface(balancerContractRegistryArtifact.abi);
+    const selector = iface.getFunction("registerBalancerContract")!.selector;
+    const authorizerArtifact = loadArtifact(config.artifactPaths.authorizer);
+    const { contract: authorizerContract } = await attachContract(
+        config.authorizer,
+        "Authorizer",
+        authorizerArtifact.abi,
+        authorizerArtifact.bytecode,
+        deployer
+    );
+    const actionId = await balancerContractRegistry.getActionId(selector);
+    const tx = await authorizerContract.grantRole(actionId, deployer.address);
+    await tx.wait();
+    await balancerContractRegistry.registerBalancerContract(1, 'WeightedPool', weightedPoolFactoryAddress);
 
-    // // Step 23: Deploy LBPoolFactory
-    // const lBPoolFactoryArtifact = loadArtifact(config.artifactPaths.lBPoolFactory);
-    // const { address: lBPoolFactoryAddress } = await deployContract(
-    //     "LBPoolFactory",
-    //     lBPoolFactoryArtifact.abi,
-    //     lBPoolFactoryArtifact.bytecode,
-    //     [
-    //         vaultAddress,
-    //         4 * YEAR,
-    //         JSON.stringify(config.jsonMetadata.lBPoolFactory),
-    //         JSON.stringify(config.jsonMetadata.lBPool),
-    //         routerAddress,
-    //         lBPMigrationRouterAddress
-    //     ],
-    //     deployer
-    // );
+    // Step 31: Deploy LBPMigrationRouter
+    const lBPMigrationRouterArtifact = loadArtifact(config.artifactPaths.lBPMigrationRouter);
+    const { address: lBPMigrationRouterAddress } = await deployContract(
+        "LBPMigrationRouter",
+        lBPMigrationRouterArtifact.abi,
+        lBPMigrationRouterArtifact.bytecode,
+        [
+            balancerContractRegistryAddress,
+            JSON.stringify(config.jsonMetadata.lBPMigrationRouter)
+        ],
+        deployer
+    );
+
+    // Step 23: Deploy LBPoolFactory
+    const lBPoolFactoryArtifact = loadArtifact(config.artifactPaths.lBPoolFactory);
+    const { address: lBPoolFactoryAddress } = await deployContract(
+        "LBPoolFactory",
+        lBPoolFactoryArtifact.abi,
+        lBPoolFactoryArtifact.bytecode,
+        [
+            vaultAddress,
+            4 * YEAR,
+            JSON.stringify(config.jsonMetadata.lBPoolFactory),
+            JSON.stringify(config.jsonMetadata.lBPool),
+            routerAddress,
+            lBPMigrationRouterAddress
+        ],
+        deployer
+    );
 
     // Step 9: Lưu kết quả
     const result = {
@@ -614,11 +645,11 @@ async function main() {
         MevCaptureHook: mevCaptureHookAddress,
         AggregatorRouter: aggregatorRouterAddress,
         TokenPairRegistry: tokenPairRegistryAddress,
-        ReClammPoolFactory: reClammPoolFactoryAddress
-        // LBPMigrationRouter: lBPMigrationRouterAddress,
-        // LBPoolFactory: lBPoolFactoryAddress
+        ReClammPoolFactory: reClammPoolFactoryAddress,
+        LBPMigrationRouter: lBPMigrationRouterAddress,
+        LBPoolFactory: lBPoolFactoryAddress
     };
-    writeFileSync("deployments.json", JSON.stringify(result, null, 2));
+    writeFileSync(`${network.name}-deployments.json`, JSON.stringify(result, null, 2));
     console.log("All deployments completed. Saved to deployments.json");
 }
 
