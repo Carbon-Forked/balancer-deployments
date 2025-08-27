@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "deploy": "hardhat run scripts/deploy-from-artifacts.ts --network hederaTestnet"
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy-from-artifacts.ts --network hederaTestnet",
+    "test:hedera-runner": "hardhat run scripts/hedera-test-runner.ts --network hederaTestnet",
+    "validate:hedera": "hardhat run scripts/hedera-validator.ts --network hederaTestnet"
   },
   "author": "",
   "license": "ISC",

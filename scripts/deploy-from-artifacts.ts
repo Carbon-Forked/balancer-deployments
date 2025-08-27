@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "fs";
 import { ethers, network } from "hardhat";
-import { Interface } from "ethers";
+import { Interface, parseEther, parseUnits } from "ethers";
 
 // Constants
 export const SECOND = 1;
@@ -11,18 +11,45 @@ export const WEEK = DAY * 7;
 export const MONTH = DAY * 30;
 export const YEAR = DAY * 365;
 
-// Config object: Tập trung tất cả params để dễ chỉnh sửa
+// Configuration object for easy parameter management
 const config = {
-    permit2HederaAddress: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
-    wHBARAddress: "0xb1f616b8134f602c3bb465fb5b5e6565ccad37ed",
     authorizer: "0x764E0054A7E3274Da20708b7727389A381d7c0D7",
     salt: "0x3877188e9e5da25b11fdb7f5e8d4fdddce2d22707ba04878a8e14700dd46fa82",
+
+    // Hedera-specific addresses - using existing tokens
+    permit2HederaAddress: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    wHBARAddress: "0xb1f616b8134f602c3bb465fb5b5e6565ccad37ed", // Existing WHBAR
+    ytnAddress: "0x0000000000000000000000000000000000639ad3", // Existing YTN
+
+    // Token decimals
+    wHBARDecimals: 8,
+    ytnDecimals: 6,
+
     pauseWindowDuration: 4 * MONTH,
     bufferPeriodDuration: 6 * MONTH,
     minTradeAmount: 1e6,
     minWrapAmount: 1e4,
     initialGlobalProtocolSwapFee: ethers.parseEther("0.5"), // 50%
     initialGlobalProtocolYieldFee: ethers.parseEther("0.1"), // 10%
+
+    // Pool configuration
+    poolSwapFee: parseEther("0.01"), // 1%
+    tokenWeights: [parseEther("0.5"), parseEther("0.5")], // 50/50
+
+    // Test amounts (adjusted for different decimals)
+    initialLiquidity: {
+        whbar: parseUnits("100", 8), // 100 WHBAR (8 decimals)
+        ytn: parseUnits("100", 6), // 100 YTN (6 decimals)
+    },
+    swapAmount: {
+        whbar: parseUnits("10", 8), // 10 WHBAR (8 decimals)
+        ytn: parseUnits("10", 6), // 10 YTN (6 decimals)
+    },
+    tokenMintAmount: {
+        whbar: parseUnits("1000", 8), // 1000 WHBAR (8 decimals)
+        ytn: parseUnits("1000", 6), // 1000 YTN (6 decimals)
+    },
+
     artifactPaths: {
         vault: "./artifacts-import/vault/Vault.json",
         vaultExtension: "./artifacts-import/vault/VaultExtension.json",
@@ -87,7 +114,7 @@ const config = {
     },
 };
 
-// Helper function: Đọc artifact từ file
+// Helper function: Load artifact from compiled contracts
 function loadArtifact(path: string) {
     try {
         return JSON.parse(readFileSync(path, "utf8"));
@@ -97,7 +124,7 @@ function loadArtifact(path: string) {
     }
 }
 
-// Helper function: Deploy contract và log
+// Helper function: Deploy contract with logging (updated for artifact-based deployment)
 async function deployContract(
     name: string,
     abi: any,
@@ -165,7 +192,7 @@ async function main() {
         deployer
     );
 
-    // Step 3: Lấy vault address dự đoán từ salt
+    // Step 3: Get predicted vault address from salt
     const vaultAddress = await vaultFactory.getDeploymentAddress(config.salt);
     console.log("Predicted Vault address:", vaultAddress);
 
@@ -176,7 +203,7 @@ async function main() {
         protocolFeeControllerArtifact.abi,
         protocolFeeControllerArtifact.bytecode,
         [
-            vaultAddress, // Sử dụng vaultAddress dự đoán thay vì targetVaultAddress
+            vaultAddress,
             config.initialGlobalProtocolSwapFee,
             config.initialGlobalProtocolYieldFee,
         ],
@@ -186,7 +213,7 @@ async function main() {
     // Step 5: Create Vault qua VaultFactory
     const createTx = await vaultFactory.create(
         config.salt,
-        vaultAddress, // Sử dụng vaultAddress dự đoán
+        vaultAddress,
         protocolFeeControllerAddress,
         vaultCreationCode,
         vaultExtensionCreationCode,
@@ -208,7 +235,7 @@ async function main() {
         stablePoolFactoryArtifact.abi,
         stablePoolFactoryArtifact.bytecode,
         [
-            vaultAddress, // Sử dụng vaultAddress dự đoán
+            vaultAddress,
             4 * 12 * MONTH,
             JSON.stringify(config.jsonMetadata.stablePoolFactory),
             JSON.stringify(config.jsonMetadata.stablePool),
@@ -223,7 +250,7 @@ async function main() {
         stableSurgeHookArtifact.abi,
         stableSurgeHookArtifact.bytecode,
         [
-            vaultAddress, // Sử dụng vaultAddress dự đoán
+            vaultAddress,
             ethers.parseEther("0.95"),
             ethers.parseEther("0.3"),
             JSON.stringify(config.jsonMetadata.stableSurgeHook),
@@ -612,42 +639,64 @@ async function main() {
         deployer
     );
 
-    // Step 9: Lưu kết quả
+    // Note: Using existing WHBAR and YTN tokens instead of deploying new ones
+    console.log(`\n🪙 Using existing tokens:`);
+    console.log(`🪙 WHBAR: ${config.wHBARAddress}`);
+    console.log(`🪙 YTN: ${config.ytnAddress}`);
+
+    console.log(`💰 WHBAR (Token A): ${config.wHBARAddress} (${config.wHBARDecimals} decimals)`);
+    console.log(`💰 YTN (Token B): ${config.ytnAddress} (${config.ytnDecimals} decimals)`);
+
+    // Step 34: Save deployment addresses
     const result = {
         timestamp: new Date().toISOString(),
-        VaultFactory: vaultFactoryAddress,
-        Vault: vaultAddress,
-        ProtocolFeeController: protocolFeeControllerAddress,
-        VaultAdmin: vaultAdminAddress,
-        VaultExtension: vaultExtensionAddress,
-        StablePoolFactory: stablePoolFactoryAddress,
-        StableSurgeHook: stableSurgeHookAddress,
-        StableSurgePoolFactory: stableSurgePoolFactoryAddress,
-        VaultExplorer: vaultExplorerAddress,
-        WrappedBalancerPoolTokenFactory: wrappedBalancerPoolTokenFactoryAddress,
-        PoolPauseHelper: poolPauseHelperAddress,
-        PoolSwapFeeHelper: poolSwapFeeHelperAddress,
-        ProtocolFeeHelper: protocolFeeHelperAddress,
-        BalancerContractRegistry: balancerContractRegistryAddress,
-        ProtocolFeePercentagesProvider: protocolFeePercentagesProviderAddress,
-        ProtocolFeeSweeper: protocolFeeSweeperAddress,
-        AggregatorBatchRouter: aggregatorBatchRouterAddress,
-        BalancerFeeBurner: balancerFeeBurnerAddress,
-        CowSwapFeeBurner: cowSwapFeeBurnerAddress,
-        ERC4626CowSwapFeeBurner: erc4626CowSwapFeeBurnerAddress,
-        Router: routerAddress,
-        BatchRouter: batchRouterAddress,
-        BufferRouter: bufferRouterAddress,
-        WeightedPoolFactory: weightedPoolFactoryAddress,
-        Gyro2CLPPoolFactory: gyro2CLPPoolFactoryAddress,
-        GyroECLPPoolFactory: gyroECLPPoolFactoryAddress,
-        CompositeLiquidityRouter: compositeLiquidityRouterAddress,
-        MevCaptureHook: mevCaptureHookAddress,
-        AggregatorRouter: aggregatorRouterAddress,
-        TokenPairRegistry: tokenPairRegistryAddress,
-        ReClammPoolFactory: reClammPoolFactoryAddress,
-        LBPMigrationRouter: lBPMigrationRouterAddress,
-        LBPoolFactory: lBPoolFactoryAddress
+        vaultFactory: vaultFactoryAddress,
+        vault: vaultAddress,
+        protocolFeeController: protocolFeeControllerAddress,
+        vaultAdmin: vaultAdminAddress,
+        vaultExtension: vaultExtensionAddress,
+        stablePoolFactory: stablePoolFactoryAddress,
+        stableSurgeHook: stableSurgeHookAddress,
+        stableSurgePoolFactory: stableSurgePoolFactoryAddress,
+        vaultExplorer: vaultExplorerAddress,
+        wrappedBalancerPoolTokenFactory: wrappedBalancerPoolTokenFactoryAddress,
+        poolPauseHelper: poolPauseHelperAddress,
+        poolSwapFeeHelper: poolSwapFeeHelperAddress,
+        protocolFeeHelper: protocolFeeHelperAddress,
+        balancerContractRegistry: balancerContractRegistryAddress,
+        protocolFeePercentagesProvider: protocolFeePercentagesProviderAddress,
+        protocolFeeSweeper: protocolFeeSweeperAddress,
+        aggregatorBatchRouter: aggregatorBatchRouterAddress,
+        balancerFeeBurner: balancerFeeBurnerAddress,
+        cowSwapFeeBurner: cowSwapFeeBurnerAddress,
+        erc4626CowSwapFeeBurner: erc4626CowSwapFeeBurnerAddress,
+        router: routerAddress,
+        batchRouter: batchRouterAddress,
+        bufferRouter: bufferRouterAddress,
+        weightedPoolFactory: weightedPoolFactoryAddress,
+        gyro2CLPPoolFactory: gyro2CLPPoolFactoryAddress,
+        gyroECLPPoolFactory: gyroECLPPoolFactoryAddress,
+        compositeLiquidityRouter: compositeLiquidityRouterAddress,
+        mevCaptureHook: mevCaptureHookAddress,
+        aggregatorRouter: aggregatorRouterAddress,
+        tokenPairRegistry: tokenPairRegistryAddress,
+        reClammPoolFactory: reClammPoolFactoryAddress,
+        lBPMigrationRouter: lBPMigrationRouterAddress,
+        lBPoolFactory: lBPoolFactoryAddress,
+        weth: config.wHBARAddress, // WHBAR acts as WETH
+        tokenA: config.wHBARAddress,
+        tokenB: config.ytnAddress,
+        config: {
+            pauseWindowDuration: config.pauseWindowDuration,
+            bufferPeriodDuration: config.bufferPeriodDuration,
+            initialGlobalProtocolSwapFee: config.initialGlobalProtocolSwapFee.toString(),
+            initialGlobalProtocolYieldFee: config.initialGlobalProtocolYieldFee.toString(),
+            wHBARAddress: config.wHBARAddress,
+            ytnAddress: config.ytnAddress,
+            wHBARDecimals: config.wHBARDecimals,
+            ytnDecimals: config.ytnDecimals,
+            salt: ethers.hexlify(config.salt),
+        },
     };
     writeFileSync(`${network.name}-deployments.json`, JSON.stringify(result, null, 2));
     console.log("All deployments completed. Saved to deployments.json");

@@ -4,6 +4,11 @@ import "dotenv/config";
 
 const config: HardhatUserConfig = {
   networks: {
+    hardhat: {
+      forking: {
+        url: `https://testnet.hashio.io/api`
+      }
+    },
     hederaTestnet: {
       chainId: 296,
       url: `https://testnet.hashio.io/api`,
