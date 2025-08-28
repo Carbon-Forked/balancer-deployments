@@ -121,7 +121,7 @@ async function validateDeployments(deployment: any) {
             { name: 'Router', address: deployment.router, artifactPath: './artifacts-import/vault/Router.json' },
             { name: 'WeightedPoolFactory', address: deployment.weightedPoolFactory, artifactPath: './artifacts-import/pool-weighted/WeightedPoolFactory.json' },
             { name: 'ProtocolFeeController', address: deployment.protocolFeeController, artifactPath: './artifacts-import/vault/ProtocolFeeController.json' },
-            { name: 'Authorizer', address: deployment.authorizer, artifactPath: './artifacts-import/authorizer/BasicAuthorizerMock.json' },
+            { name: 'Authorizer', address: deployment.authorizer, artifactPath: './artifacts-import/authorizer/Authorizer.json' },
         ];
 
         const [signer] = await ethers.getSigners();

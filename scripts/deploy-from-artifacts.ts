@@ -114,6 +114,9 @@ const config = {
     },
 };
 
+// Deploy Permit2 bytecode for local testing
+const PERMIT2_BYTECODE = '0x6040608081526004908136101561001557600080fd5b600090813560e01c80630d58b1db1461126c578063137c29fe146110755780632a2d80d114610db75780632b67b57014610bde57806330f28b7a14610ade5780633644e51514610a9d57806336c7851614610a285780633ff9dcb1146109a85780634fe02b441461093f57806365d9723c146107ac57806387517c451461067a578063927da105146105c3578063cc53287f146104a3578063edd9444b1461033a5763fe8ec1a7146100c657600080fd5b346103365760c07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc3601126103365767ffffffffffffffff833581811161033257610114903690860161164b565b60243582811161032e5761012b903690870161161a565b6101336114e6565b9160843585811161032a5761014b9036908a016115c1565b98909560a43590811161032657610164913691016115c1565b969095815190610173826113ff565b606b82527f5065726d697442617463685769746e6573735472616e7366657246726f6d285460208301527f6f6b656e5065726d697373696f6e735b5d207065726d69747465642c61646472838301527f657373207370656e6465722c75696e74323536206e6f6e63652c75696e74323560608301527f3620646561646c696e652c000000000000000000000000000000000000000000608083015282519a8b9181610222602085018096611f93565b918237018a8152039961025b7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe09b8c8101835282611437565b5190209085515161026b81611ebb565b908a5b8181106102f95750506102f6999a6102ed9183516102a081610294602082018095611f66565b03848101835282611437565b519020602089810151858b015195519182019687526040820192909252336060820152608081019190915260a081019390935260643560c08401528260e081015b03908101835282611437565b51902093611cf7565b80f35b8061031161030b610321938c5161175e565b51612054565b61031b828661175e565b52611f0a565b61026e565b8880fd5b8780fd5b8480fd5b8380fd5b5080fd5b';
+
 // Helper function: Load artifact from compiled contracts
 function loadArtifact(path: string) {
     try {
@@ -145,6 +148,20 @@ async function deployContract(
     return { contract, address };
 }
 
+// Helper function: Deploy Permit2 for local testing
+async function deployPermit2() {
+    console.log('🔧 Ensuring Permit2 is deployed...');
+
+    const existingCode = await ethers.provider.getCode(config.permit2HederaAddress);
+    if (existingCode === '0x') {
+        console.log('Deploying Permit2 for local testing...');
+        await ethers.provider.send('hardhat_setCode', [config.permit2HederaAddress, PERMIT2_BYTECODE]);
+        console.log(`✅ Permit2 deployed at: ${config.permit2HederaAddress}`);
+    } else {
+        console.log(`✅ Permit2 already available at: ${config.permit2HederaAddress}`);
+    }
+}
+
 async function attachContract(
     address: string,
     name: string,
@@ -162,6 +179,19 @@ async function attachContract(
 async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deployer:", await deployer.getAddress());
+
+    await deployPermit2();
+
+    const authorizerArtifact = loadArtifact(config.artifactPaths.authorizer);
+    const { address: authorizerAddress, contract: authorizerFactory } = await deployContract(
+        "Authorizer",
+        authorizerArtifact.abi,
+        authorizerArtifact.bytecode,
+        [deployer.address],
+        deployer
+    );
+    // Add authorizer to config for VaultFactory
+    (config as any).authorizer = authorizerAddress;
 
     // Step 1: Load bytecodes cho Vault-related
     const vaultArtifact = loadArtifact(config.artifactPaths.vault);
@@ -596,16 +626,16 @@ async function main() {
 
     const iface = new Interface(balancerContractRegistryArtifact.abi);
     const selector = iface.getFunction("registerBalancerContract")!.selector;
-    const authorizerArtifact = loadArtifact(config.artifactPaths.authorizer);
-    const { contract: authorizerContract } = await attachContract(
-        config.authorizer,
-        "Authorizer",
-        authorizerArtifact.abi,
-        authorizerArtifact.bytecode,
-        deployer
-    );
+    // const authorizerArtifact = loadArtifact(config.artifactPaths.authorizer);
+    // const { contract: authorizerContract } = await attachContract(
+    //     config.authorizer,
+    //     "Authorizer",
+    //     authorizerArtifact.abi,
+    //     authorizerArtifact.bytecode,
+    //     deployer
+    // );
     const actionId = await balancerContractRegistry.getActionId(selector);
-    const tx = await authorizerContract.grantRole(actionId, deployer.address);
+    const tx = await authorizerFactory.grantRole(actionId, deployer.address);
     await tx.wait();
     await balancerContractRegistry.registerBalancerContract(1, 'WeightedPool', weightedPoolFactoryAddress);
 
@@ -650,6 +680,7 @@ async function main() {
     // Step 34: Save deployment addresses
     const result = {
         timestamp: new Date().toISOString(),
+        authorizer: authorizerAddress,
         vaultFactory: vaultFactoryAddress,
         vault: vaultAddress,
         protocolFeeController: protocolFeeControllerAddress,
